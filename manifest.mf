@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Specification-Title: Petal File API Specification http://rosepetal.sf.net
+Specification-Vendor: Free Software Foundation. (http://www.gnu.org)
+Specification-Version: @version@
+Implementation-Vendor: Free Software Foundation. (http://www.gnu.org)
+Implementation-Title: Petal File Library http://rosepetal.sf.net
+Implementation-Version: @version@
+

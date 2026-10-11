@@ -1,0 +1,5 @@
+0.0.2 2002-07-01
+   Fixed bug with "By Value" constant.
+
+0.0.1 NOT RELEASED const
+   Initial public version.
