@@ -11,3 +11,5 @@ model - model describing petal file. it is in mof1.3 format. It were saved
 
 This project aims to import UML diagrams made in Rational Rose's petals file format.
 original at https://sourceforge.net/projects/rosepetal/
+
+The purpose of project is libarary that is foundation for importers from Rational Rose file formats to other formats and importers to some specific formats like nsuml xmi.
