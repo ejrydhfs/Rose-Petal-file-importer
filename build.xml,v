@@ -1,0 +1,244 @@
+head	1.5;
+access;
+symbols
+	release0_0_2:1.5
+	release0_0_1:1.3;
+locks; strict;
+comment	@# @;
+
+
+1.5
+date	2002.07.01.13.47.56;	author const;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2002.07.01.10.35.35;	author const;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2002.04.29.11.53.32;	author const;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2002.04.29.08.27.27;	author const;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2002.04.27.11.16.01;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@pre 0.0.2 release
+@
+text
+@<?xml version="1.0"?>
+
+<!-- ==================================================================== -->
+<!-- Rose Petal File Library for Java build file                          -->
+<!-- ==================================================================== -->
+
+<project name="rosepetal" default="main" basedir=".">
+
+  <property name="Name" value="Rose Petal file format library for Java"/>
+  <property name="name" value="rosepetal"/>
+  <property name="version" value="0.0.2"/>
+  <property name="_version" value="0_0_2"/>
+  <property name="debug" value="on"/>
+  <property name="build" value="${basedir}/build"/>
+
+  <property name="astgen.src.dir" value="${basedir}/genast/src"/>
+  <property name="astgen.classes" value="${build}/bt_classes"/>
+
+  
+  <property name="src.dir" value="${basedir}/src"/>
+  <property name="gen.src.dir" value="${build}/gen_src"/>
+  <property name="lib.dir" value="${basedir}/lib"/>
+  <property name="classes" value="${build}/classes"/>
+  <property name="manifest" value="${basedir}/manifest.mf"/>
+  <property name="build.compiler" value="modern"/>
+
+  <path id="rt.class.path">
+    <pathelement location="${lib.dir}/nsuml/xerces.jar"/>
+    <pathelement location="${lib.dir}/nsuml/jdom.jar"/>
+    <pathelement location="${lib.dir}/nsuml/nsuml.jar"/>
+    <pathelement path="${java.class.path}/"/>
+  </path>
+
+  <path id="astgen.class.path">
+    <pathelement location="${lib.dir}/build/nsmdf.jar"/>
+    <pathelement location="${lib.dir}/build/jaxp.jar"/>
+    <pathelement location="${lib.dir}/build/crimson.jar"/>
+    <pathelement path="${java.class.path}/"/>
+  </path>
+
+  <path id="astgen.run.class.path">
+    <pathelement location="${astgen.classes}"/>
+    <pathelement location="${lib.dir}/build/nsmdf.jar"/>
+    <pathelement location="${lib.dir}/build/jaxp.jar"/>
+    <pathelement location="${lib.dir}/build/crimson.jar"/>
+    <pathelement path="${java.class.path}/"/>
+  </path>
+
+
+
+
+  <!-- =================================================================== -->
+  <!-- Main                                                                -->
+  <!-- =================================================================== -->
+  <target name="main" depends="package">
+
+  </target>
+
+
+  <target name="run_astgen" depends="compile_astgen">
+    <mkdir dir="${astgen.classes}"/>
+    <java  classname="net.sf.rosepetal.genast.ASTGen" fork="yes">
+      <arg value="${basedir}/model/petal.xml"/>
+      <arg value="${gen.src.dir}"/>
+      <classpath refid="astgen.run.class.path"/>
+    </java>
+  </target>
+
+
+  <target name="compile_astgen">
+    <mkdir dir="${astgen.classes}"/>
+    <javac destdir="${astgen.classes}"
+           debug="on"
+           deprecation="off"
+           optimize="off">
+      <src path="${astgen.src.dir}"/> 
+      <classpath refid="astgen.class.path"/>
+    </javac>
+  </target>
+
+  <target name="compile" depends="run_astgen">
+    <mkdir dir="${classes}"/>
+    <javac destdir="${classes}"
+           debug="on"
+           deprecation="off"
+           optimize="off">
+      <src path="${src.dir}"/> 
+      <src path="${gen.src.dir}"/> 
+      <classpath refid="rt.class.path"/>
+    </javac>
+  </target>
+
+  <target name="jar" depends="compile">
+    <delete file="${build}/${name}.jar"/>
+    <filter token="version" value="${version}"/>
+    <copy file="${manifest}"
+          tofile="${build}/manifest.mf"
+          filtering="on" />
+    <jar jarfile="${build}/${name}.jar"
+         basedir="${classes}"
+         manifest="${build}/manifest.mf"
+    />
+  </target>
+
+
+  <target name="src_jar" depends="run_astgen">
+    <delete file="${build}/${name}-gensrc.jar"/>
+    <jar jarfile="${build}/${name}-gensrc.jar"
+         basedir="${gen.src.dir}"
+    />
+  </target>
+
+  <target name="package" depends="jar">
+    <delete dir="${build}/package"/>
+    <mkdir dir="${build}/package/${name}"/>
+    <copy file="${build}/${name}.jar" toFile="${build}/package/${name}/build/${name}.jar"/>
+    <copy toDir="${build}/package/${name}/lib/nsuml">
+      <fileset dir="${lib.dir}/nsuml"/>
+    </copy>
+    <copy toDir="${build}/package/${name}/doc">
+      <fileset dir="${basedir}/doc"/>
+    </copy>
+    <copy toDir="${build}/package/${name}/src">
+      <fileset dir="${src.dir}"/>
+      <fileset dir="${gen.src.dir}"/>
+    </copy>
+    <copy file="${basedir}/input.mdl" toDir="${build}/package/${name}"/>
+    <copy file="${basedir}/petal2uml.cmd" toDir="${build}/package/${name}"/>
+    <copy file="${basedir}/changes.txt" toDir="${build}/package/${name}"/>
+    <copy file="${basedir}/manifest.mf" toDir="${build}/package/${name}"/>
+    <delete file="${build}/${name}-${_version}.zip"/>
+    <zip zipfile="${build}/${name}-${_version}.zip" basedir="${build}/package" />
+  </target>
+
+</project>
+
+@
+
+
+1.4
+log
+@By Value bug fixed
+@
+text
+@d11 2
+a12 2
+  <property name="version" value="0.0.2NR"/>
+  <property name="_version" value="0_0_2NR"/>
+@
+
+
+1.3
+log
+@initial check-in
+@
+text
+@d11 2
+a12 2
+  <property name="version" value="0.0.1"/>
+  <property name="_version" value="0_0_1"/>
+@
+
+
+1.2
+log
+@initial checkin
+@
+text
+@d11 2
+a12 2
+  <property name="version" value="0.0.1NR"/>
+  <property name="_version" value="0_0_1NR"/>
+d119 3
+@
+
+
+1.1
+log
+@initial checkin
+@
+text
+@d16 4
+a21 1
+
+d25 1
+a25 1
+  <property name="build.compiler" value="jikes"/>
+d28 3
+d34 17
+d55 4
+a58 1
+  <target name="main" depends="compile">
+d60 7
+d70 12
+a81 1
+  <target name="compile">
+d88 1
+d91 39
+@
+

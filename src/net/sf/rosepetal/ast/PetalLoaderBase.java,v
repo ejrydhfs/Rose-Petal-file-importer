@@ -1,0 +1,559 @@
+head	1.1;
+access;
+symbols
+	release0_0_2:1.1
+	release0_0_1:1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2002.04.29.08.27.28;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@initial checkin
+@
+text
+@/*
+ *  Rose Petal file API.
+ *  Copyright (C) 2001-2002, Free Software Foundation.
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Library General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Library General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Library General Public
+ *  License along with this library; if not, write to the
+ *  Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *  Boston, MA  02111-1307, USA. The text of license can be also found
+ *  at http://www.gnu.org/copyleft/lgpl.html
+ */
+package net.sf.rosepetal.ast;
+import java.util.*;
+import java.io.*;
+import net.sf.rosepetal.dom.*;
+import net.sf.rosepetal.dom.parser.*;
+
+/** this is a base class for loading petal dom into petal ast */
+public abstract class PetalLoaderBase
+{
+  /** error log */
+  protected final PrintWriter log;
+  /** current file */
+  protected File file;
+  /** name for quidu */
+  protected String nameForQuidu;
+  /** prop for quidu */
+  protected String propForQuidu;
+  /** map from quid to object */
+  protected final HashMap quid2obj = new HashMap();
+  /** set of links */
+  protected final ArrayList links = new ArrayList();
+
+  class Link
+  {
+    final PBase  object;
+    final String prop;
+    final String name;
+    final String quid;
+    final PetalProperty quidProp;
+    Link(PBase object, String prop, String name, PetalProperty quidProp)
+    {
+      this.object = object;
+      this.prop = prop;
+      this.name = name;
+      this.quidProp = quidProp;
+      this.quid = (String)quidProp.getValue();
+    }
+  }
+
+
+  /** a constuctor */
+  public PetalLoaderBase(File f, PrintWriter l)
+  {
+    file = f.getAbsoluteFile();
+    log = l;
+  }
+
+  /** parse file */
+  public PBase parse()
+  {
+    PetalDocument doc = (new PetalParser(file,log)).getDocument();
+    PBase rc = parseObject(doc.getBody());
+    performLinking();
+    return rc;
+  }
+
+  /** parse object and return */
+  protected PBase parseObject(PetalObject o, PBase obj)
+  {
+    error("object "+o.getType()+" at "+getStrPos(o)+" is not recognized.");
+    return null;
+  }
+
+  /** parse object and return */
+  protected PBase parseObject(PetalObject o)
+  {
+    return parseObject(o,null);
+  }
+
+
+  /** not implemented yet */
+  protected void parseArguments(PBase p, PetalObject o)
+  {
+    p.setFile(o.getDocument().getFile(),o.getStartLine(),o.getStartColumn());
+    List args = o.getArguments();
+    int i = 0;
+    int n = args.size();
+    if(i >= n) return;
+    Object v = args.get(i);
+    if(p instanceof PElement)
+    {
+      if(v instanceof String)
+      {
+        ((PElement)p).setName((String)v);
+        i++;
+        if(i >= n) return;
+        v = args.get(i);
+      }
+    }
+    if(p instanceof PRoseItemView)
+    {
+      if(v instanceof String)
+      {
+        ((PRoseItemView)p).setViewedItemQualifiedName((String)v);
+        i++;
+        if(i >= n) return;
+        v = args.get(i);
+      }
+      if(v instanceof PetalRefValue)
+      {
+        ((PRoseItemView)p).setDiagramId(((PetalRefValue)v).getRef());
+        /** @@todo add enlisting there */
+        i++;
+        if(i >= n) return;
+        v = args.get(i);
+      }
+    }
+    if(p instanceof PModule)
+    {
+      if(v instanceof String)
+      {
+        ((PModule)p).setModuleType((String)v);
+        i++;
+        if(i >= n) return;
+        v = args.get(i);
+      }
+      if(v instanceof String)
+      {
+        ((PModule)p).setModulePart((String)v);
+        i++;
+        if(i >= n) return;
+        v = args.get(i);
+      }
+    }
+  }
+
+  /** report error */
+  public final void error(String msg)
+  {
+    if(log != null)
+    {
+      log.println("ERROR("+file+"): "+msg);
+      new Exception().printStackTrace(log);
+      log.flush();
+    }
+  }
+
+  /** report error */
+  public final void warning(String msg)
+  {
+    if(log != null)
+    {
+      log.println("WARNING("+file+"): "+msg);
+      //new Exception().printStackTrace(log);
+      log.flush();
+    }
+  }
+
+  /** report error */
+  public final void error(String msg, Throwable ex)
+  {
+    if(log != null)
+    {
+      log.println("ERROR("+file+"): "+msg);
+      log.print("Related Exception: ");
+      ex.printStackTrace(log);
+      new Exception().printStackTrace(log);
+      log.flush();
+    }
+  }
+
+  final String getStrPos(PetalValue prop)
+  {
+    return "("+prop.getStartLine()+","+prop.getStartColumn()+")";
+  }
+
+  /** check if petal property contains list, report error otherwise */
+  final boolean checkList(PetalProperty prop)
+  {
+    if(prop.getValue() instanceof PetalListValue)
+    {
+      return true;
+    }
+    error("expecting list for property "+prop.getName()+" found at "+
+      getStrPos(prop));
+    return false;
+  }
+
+  /** check if petal property contains list, report error otherwise */
+  final boolean checkPetalObject(PetalProperty prop)
+  {
+    if(prop.getValue() instanceof PetalObject)
+    {
+      return true;
+    }
+    error("expecting object for property "+prop.getName()+" found at "+
+      getStrPos(prop));
+    return false;
+  }
+
+  /** check if petal property contains list, report error otherwise */
+  final boolean checkRef(PetalProperty prop)
+  {
+    if(prop.getValue() instanceof PetalRefValue)
+    {
+      return true;
+    }
+    error("expecting ref for property "+prop.getName()+" found at "+
+      getStrPos(prop));
+    return false;
+  }
+
+
+  /** check if petal property contains list, report error otherwise */
+  final boolean checkString(PetalProperty prop)
+  {
+    if(prop.getValue() instanceof String)
+    {
+      return true;
+    }
+    error("expecting string for property "+prop.getName()+" found at "+
+      getStrPos(prop));
+    return false;
+  }
+
+  /** check if petal property contains list, report error otherwise */
+  final boolean checkBoolean(PetalProperty prop)
+  {
+    if(prop.getValue() instanceof Boolean)
+    {
+      return true;
+    }
+    error("expecting boolean for property "+prop.getName()+" found at "+
+      getStrPos(prop));
+    return false;
+  }
+
+  /** check if petal property contains list, report error otherwise */
+  final boolean checkDouble(PetalProperty prop)
+  {
+    if(prop.getValue() instanceof Double)
+    {
+      return true;
+    }
+    error("expecting float for property "+prop.getName()+" found at "+
+      getStrPos(prop));
+    return false;
+  }
+
+  /** check if petal property contains list, report error otherwise */
+  final boolean checkInteger(PetalProperty prop)
+  {
+    if(prop.getValue() instanceof Integer)
+    {
+      return true;
+    }
+    error("expecting boolean for property "+prop.getName()+" found at "+
+      getStrPos(prop));
+    return false;
+  }
+
+  /** report error */
+  public final void errorWrongObjectType(PetalProperty prop, Class cls)
+  {
+    error("only petal objects of type "+cls.getName()+
+      " are expected in propety "+prop.getName()+" found at "+
+      getStrPos(prop));
+  }
+
+  /** repror error */
+  public final void errorPetalObjectExpected(PetalProperty prop, Object uv)
+  {
+    error("petal object is expected in propety "+prop.getName()+" found at "+
+    getStrPos(prop)+" and found "+uv);
+  }
+
+  /** */
+  public final void resetNameForQuidu(PetalProperty prop)
+  {
+    nameForQuidu = null;
+    propForQuidu = null;
+
+    error("quidu was expected at "+getStrPos(prop)+" there and found "+prop.getName());
+  }
+
+  protected final void enlistDiagramRef(PBase obj, PetalProperty prop)
+  {
+    error("diagram references are not supported "+getStrPos(prop));
+  }
+
+  protected String extractString(Object v)
+  {
+    return (String)v;
+  }
+  protected boolean extractBoolean(Object v)
+  {
+    return ((Boolean)v).booleanValue();
+  }
+  protected int extractInteger(Object v)
+  {
+    return ((Integer)v).intValue();
+  }
+  protected double extractDouble(Object v)
+  {
+    return ((Double)v).doubleValue();
+  }
+
+  protected final void parsePropertiesOfPBase(PBase obj, PetalProperty prop, String nm)
+  {
+    if(nm == "quid")
+    {
+      if(checkString(prop))
+      {
+        quid2obj.put(prop.getValue(),obj);
+        obj.setQuid((String)prop.getValue());
+      }
+      return;
+    }
+    if(nm == "quidu")
+    {
+      if(checkString(prop))
+      {
+        if(propForQuidu == null)
+        {
+          // then it is quidu propery
+          propForQuidu = "quidu";
+        }
+        links.add(new Link(obj,propForQuidu,nameForQuidu,prop));
+        nameForQuidu = null;
+        propForQuidu = null;
+      }
+      return;
+    }
+    warning("property "+prop.getName()+" found at "+getStrPos(prop)+" is unknown.");
+  }
+  /** ignore property */
+  protected final void ignore(PetalProperty prop)
+  {
+    /** @@todo insert optional warning there */
+  }
+
+  /** load unit if it is needed */
+  public void loadUnitIfNeeded(PControllableUnit obj)
+  {
+    final File oldFile = file;
+    try
+    {
+      if(!obj.isLoaded() && obj.getFileName()!=null)
+      {
+        File f = new File(obj.getFileName());
+        if(f.isAbsolute())
+        {
+          if(!f.exists())
+          {
+            ArrayList fc = new ArrayList();
+            while( f.getParent() != null )
+            {
+              fc.add(f.getName());
+              f = f.getParentFile();
+            }
+            if(fc.size() == 0)
+            {
+              throw new RuntimeException("could not get parent from "+f);
+            }
+            File candidateParent = oldFile.getParentFile();
+            ArrayList candidateList = new ArrayList();
+            while(candidateParent != null)
+            {
+              for(int i=0;i<fc.size();i++)
+              {
+                File candidate = candidateParent;
+                for(int j=i;j>=0;j--)
+                {
+                  candidate = new File(candidate,(String)fc.get(i));
+                }
+                if(candidate.exists())
+                {
+                  candidateList.add(candidate);
+                }
+              }
+              candidateParent = candidateParent.getParentFile();
+            }
+            if(candidateList.size() == 0)
+            {
+              throw new RuntimeException("file "+obj.getFileName()
+                +" referenced from "+obj.getSourceFile()+"("+
+                obj.getSourceFileLine()+","+obj.getSourceFileColumn()+
+                ") is not found");
+            }
+            f = (File)candidateList.get(0);
+            if(candidateList.size() == 1)
+            {
+              warning("instead of file "+obj.getFileName()
+                +" referenced from "+obj.getSourceFile()+"("+
+                obj.getSourceFileLine()+","+obj.getSourceFileColumn()+
+                "), file "+f+" have been heuristically choosen.");
+            }
+            else
+            {
+              error("instead of file "+obj.getFileName()
+                +" referenced from "+obj.getSourceFile()+"("+
+                obj.getSourceFileLine()+","+obj.getSourceFileColumn()+
+                "), file "+f+" have been heuristically choosen from following candidates"+
+                candidateList);
+            }
+          }
+        }
+        else
+        {
+          File nf = oldFile.getParentFile();
+          if(nf == null)
+          {
+            throw new RuntimeException("could not get parent from "+oldFile);
+          }
+          f = new File(nf, obj.getFileName());
+        }
+        PetalDocument doc = (new PetalParser(f,log)).getDocument();
+        parseObject(doc.getBody(),obj);
+      }
+    }
+    finally
+    {
+      file = oldFile;
+    }
+  }
+
+  /** perform linking for all pending objects */
+  void performLinking()
+  {
+    for(Iterator i = links.iterator();i.hasNext();)
+    {
+      Link l = (Link)i.next();
+      PBase obj = (PBase)quid2obj.get(l.quid);
+      if(obj != null)
+      {
+        l.object.setQuiduReference(l.prop,obj);
+      }
+      else
+      {
+        error("object with quid "+l.quid+" referenced at "
+          +getStrPos(l.quidProp)+" not found");
+      }
+    }
+  }
+
+  protected PAttributeValue parseAttributeValue(PBase o, PetalProperty prop)
+  {
+    Object v = prop.getValue();
+    if(v instanceof String)
+    {
+      PAttributeStringValue rc = new PAttributeStringValue();
+      rc.setFile(o.getSourceFile(),prop.getStartLine(),prop.getStartColumn());
+      rc.setValue(v.toString());
+      return rc;
+    }
+    if(v instanceof Boolean)
+    {
+      PAttributeBooleanValue rc = new PAttributeBooleanValue();
+      rc.setFile(o.getSourceFile(),prop.getStartLine(),prop.getStartColumn());
+      rc.setValue(((Boolean)v).booleanValue());
+      return rc;
+    }
+    if(v instanceof Integer)
+    {
+      PAttributeIntValue rc = new PAttributeIntValue();
+      rc.setFile(o.getSourceFile(),prop.getStartLine(),prop.getStartColumn());
+      rc.setValue(((Integer)v).intValue());
+      return rc;
+    }
+    if(v instanceof Double)
+    {
+      PAttributeDoubleValue rc = new PAttributeDoubleValue();
+      rc.setFile(o.getSourceFile(),prop.getStartLine(),prop.getStartColumn());
+      rc.setValue(((Double)v).doubleValue());
+      return rc;
+    }
+    if(v instanceof Character)
+    {
+      PAttributeCharValue rc = new PAttributeCharValue();
+      rc.setFile(o.getSourceFile(),prop.getStartLine(),prop.getStartColumn());
+      rc.setValue(v.toString());
+      return rc;
+    }
+    if(v instanceof PetalListValue)
+    {
+      PAttributeListValue rc = new PAttributeListValue();
+      rc.setFile(o.getSourceFile(),prop.getStartLine(),prop.getStartColumn());
+
+      for(Iterator i=((PetalListValue)v).iterator();i.hasNext();)
+      {
+        Object uv = (Object)i.next();
+        if (uv instanceof PetalObject)
+        {
+          PBase val = parseObject((PetalObject)uv);
+          if (val instanceof PAttribute)
+          {
+            rc.addValue((PAttribute)val);
+          }
+          else
+          {
+            errorWrongObjectType(prop,PAttribute.class);
+          }
+        }
+        else
+        {
+          errorPetalObjectExpected(prop, uv);
+        }
+      }
+      return rc;
+    }
+    if(v instanceof PetalEnumValue)
+    {
+      PAttributeEnumValue rc = new PAttributeEnumValue();
+      rc.setFile(o.getSourceFile(),prop.getStartLine(),prop.getStartColumn());
+      PetalEnumValue ev = (PetalEnumValue)v;
+      rc.setEnumKind(ev.getEnumKind());
+      rc.setValue(ev.getValue());
+      return rc;
+    }
+    else
+    {
+      error("attribute value at "+getStrPos(prop)+" is not recognized.");
+      return null;
+    }
+
+  }
+}@

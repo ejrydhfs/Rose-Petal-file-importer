@@ -1,0 +1,37 @@
+head	1.1;
+access;
+symbols
+	release0_0_2:1.1
+	release0_0_1:1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2002.04.29.11.55.01;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@initial check-in
+@
+text
+@This software is alpha quality level.
+It does work for specific tasks, but
+some tasks other task will break.
+
+Particulary xmi output is incorrect.
+
+Distributed sources are enouph to compile
+files, but they are not complete. You
+could get complete sources from cvs
+using corresponding release tag.
+
+See http://sf.net/projects/rosepetal
+for information about the project.@

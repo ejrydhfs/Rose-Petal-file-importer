@@ -1,0 +1,57 @@
+head	1.2;
+access;
+symbols
+	release0_0_2:1.2
+	release0_0_1:1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2002.04.29.11.53.32;	author const;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2002.04.29.08.45.29;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@initial check-in
+@
+text
+@Manifest-Version: 1.0
+Specification-Title: Petal File API Specification http://rosepetal.sf.net
+Specification-Vendor: Free Software Foundation. (http://www.gnu.org)
+Specification-Version: @@version@@
+Implementation-Vendor: Free Software Foundation. (http://www.gnu.org)
+Implementation-Title: Petal File Library http://rosepetal.sf.net
+Implementation-Version: @@version@@
+
+@
+
+
+1.1
+log
+@initial checkin
+@
+text
+@d2 2
+a3 4
+Specification-Title: Petal File API Specification
+Specification-Vendor: FSF
+Created-By: 1.3.0 (Sun Microsystems Inc.)
+Implementation-Vendor: FSF
+d5 2
+d8 1
+a8 1
+Implementation-Title: Petal File Library
+@
+

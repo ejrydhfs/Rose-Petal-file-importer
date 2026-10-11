@@ -1,0 +1,50 @@
+head	1.2;
+access;
+symbols
+	release0_0_2:1.2
+	release0_0_1:1.2;
+locks; strict;
+comment	@:: @;
+
+
+1.2
+date	2002.04.29.11.53.32;	author const;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2002.04.29.08.27.27;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@initial check-in
+@
+text
+@@@echo off
+set classpath=./build/rosepetal.jar;%classpath%
+set classpath=./lib/nsuml/nsuml.jar;%classpath%
+set classpath=./lib/nsuml/xerces.jar;%classpath%
+set classpath=./lib/nsuml/jdom.jar;%classpath%
+@@echo on
+java -classpath %CLASSPATH% net.sf.rosepetal.nsuml.PetalToUml %1 %2
+@
+
+
+1.1
+log
+@initial checkin
+@
+text
+@d1 1
+d6 1
+a6 1
+
+@
+

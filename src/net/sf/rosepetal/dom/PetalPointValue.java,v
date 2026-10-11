@@ -1,0 +1,90 @@
+head	1.2;
+access;
+symbols
+	release0_0_2:1.2
+	release0_0_1:1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2002.04.29.08.27.28;	author const;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2002.04.27.11.16.23;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@initial checkin
+@
+text
+@/*
+ *  Rose Petal file API.
+ *  Copyright (C) 2001-2002, Free Software Foundation.
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Library General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Library General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Library General Public
+ *  License along with this library; if not, write to the
+ *  Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *  Boston, MA  02111-1307, USA. The text of license can be also found
+ *  at http://www.gnu.org/copyleft/lgpl.html
+ */
+package net.sf.rosepetal.dom;
+/** class for point values in petal file */
+public final class PetalPointValue extends PetalValue
+{
+  /** x value */
+  final private int x;
+  /** y value */
+  final private int y;
+  /** a constructor */
+  public PetalPointValue(int sl, int sc, int _x, int _y)
+  {
+    super(sl, sc);
+    x = _x;
+    y = _y;
+  }
+  /** get x value */
+  public int getX()
+  {
+    return x;
+  }
+  /** get y value */
+  public int getY()
+  {
+    return x;
+  }
+  /** get debug info */
+  public String toString()
+  {
+    return "("+x+", "+y+")";
+  }
+
+}
+@
+
+
+1.1
+log
+@initial checkin
+@
+text
+@d1 18
+@
+

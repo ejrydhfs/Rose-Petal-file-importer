@@ -1,0 +1,136 @@
+head	1.1;
+access;
+symbols
+	release0_0_2:1.1
+	release0_0_1:1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2002.04.29.08.27.27;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@initial checkin
+@
+text
+@/*
+ *  Rose Petal file API.
+ *  Copyright (C) 2001-2002, Free Software Foundation.
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Library General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Library General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Library General Public
+ *  License along with this library; if not, write to the
+ *  Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *  Boston, MA  02111-1307, USA. The text of license can be also found
+ *  at http://www.gnu.org/copyleft/lgpl.html
+ */
+package net.sf.rosepetal.genast;
+
+
+import ru.novosoft.mdf.ext.*;
+import ru.novosoft.mdf.impl.*;
+import javax.jmi.model.*;
+import java.util.*;
+import java.io.*;
+
+/** this is a temporary generator that generates mof interfaces */
+public class ASTGenEnum extends ASTGenWriter
+{
+  EnumerationType modelElement;
+  ASTGenEnum(ASTGen g, EnumerationType e) throws IOException
+  {
+    super(g, g.getNamespace(e.getContainer()), "P"+g.getName1(e)+".java");
+    modelElement = e;
+    try
+    {
+      line("package "+g.getNamespace(e.getContainer())+";");
+      String tn = g.getTypeName(e);
+      line("public final class "+tn);
+      sblock();
+      {
+        line("final private String name;");
+        line("final private int value;");
+        line("final public String getName(){return name;}");
+        line("final public int getValue(){return value;}");
+        int n = 1;
+        for (Iterator i = modelElement.getLabels().iterator(); i.hasNext(); )
+        {
+          String label = (String)i.next();
+          String ulabel = NameUtil.getId3(label);
+          line("public static final int _"+ulabel+" = "+n+";");
+          n++;
+          line("public static final "+tn+" "+ulabel+" = new "+
+            tn+"(\""+label+"\",_"+ulabel+");" );
+        }
+        line("private "+tn+"(String nm, int val)");
+        sblock();
+        {
+          line("name = nm;");
+          line("value = val;");
+        }
+        eblock();
+
+        line("public static "+tn+" forName(String s)");
+        sblock();
+        {
+          for (Iterator i = modelElement.getLabels().iterator(); i.hasNext(); )
+          {
+            String label = (String)i.next();
+            String ulabel = NameUtil.getId3(label);
+            sif("\""+label+"\".equals(s)");
+            {
+              line("return "+ulabel+";");
+            }
+            eif();
+          }
+          sif("null == s");
+          {
+            line("return null;");
+          }
+          eif();
+          line("throw new IllegalArgumentException(\"Label not recognized: \"+s);");
+        }
+        eblock();
+
+        line("public static "+tn+" forValue(int n)");
+        sblock();
+        {
+          for (Iterator i = modelElement.getLabels().iterator(); i.hasNext(); )
+          {
+            String label = (String)i.next();
+            String ulabel = NameUtil.getId3(label);
+            sif("n == _"+ulabel);
+            {
+              line("return "+ulabel+";");
+            }
+            eif();
+          }
+          line("throw new IllegalArgumentException(\"Value not recognized: \"+n);");
+        }
+        eblock();
+      }
+      eblock();
+    }
+    finally
+    {
+      close();
+    }
+  }
+}
+@

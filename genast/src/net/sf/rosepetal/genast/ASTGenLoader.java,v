@@ -1,0 +1,343 @@
+head	1.1;
+access;
+symbols
+	release0_0_2:1.1
+	release0_0_1:1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2002.04.29.08.27.27;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@initial checkin
+@
+text
+@/*
+ *  Rose Petal file API.
+ *  Copyright (C) 2001-2002, Free Software Foundation.
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Library General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Library General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Library General Public
+ *  License along with this library; if not, write to the
+ *  Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *  Boston, MA  02111-1307, USA. The text of license can be also found
+ *  at http://www.gnu.org/copyleft/lgpl.html
+ */
+package net.sf.rosepetal.genast;
+
+import ru.novosoft.mdf.ext.*;
+import ru.novosoft.mdf.impl.*;
+import javax.jmi.model.*;
+import java.util.*;
+import java.io.*;
+
+/** this is a temporary generator that generates mof interfaces */
+public class ASTGenLoader extends ASTGenWriter
+{
+  MofPackage modelElement;
+  ModelPackage model;
+  ASTGenLoader(ASTGen g, MofPackage e) throws IOException
+  {
+    super(g, g.getNamespace(e), "PetalASTLoader.java");
+    modelElement = e;
+    model = (ModelPackage)e.refOutermostPackage();
+    try
+    {
+      sline("package ");
+      println(g.getNamespace(e)+";");
+      line( "import java.io.*;");
+      line( "import java.util.*;");
+      line( "import net.sf.rosepetal.dom.*;");
+      line( "import net.sf.rosepetal.dom.parser.*;");
+      line("public final class PetalASTLoader extends PetalLoaderBase");
+      sblock();
+      {
+        line("public PetalASTLoader(File f, PrintWriter l){super(f,l);}");
+        generateParseObject();
+        generateParseProperties();
+      }
+      eblock();
+    }
+    finally
+    {
+      close();
+    }
+  }
+
+  public void generateParseObject()
+  {
+    line("public PBase parseObject(PetalObject po, PBase baseObj)");
+    sblock();
+    {
+      line("String type = po.getType();");
+      for(Iterator i = model.getMofClass().refAllOfClass().iterator();i.hasNext();)
+      {
+        MofClass o = (MofClass)i.next();
+        if(o.isAbstract())
+          continue;
+        boolean isUnit = isSubtype(o, "ControllableUnit");
+        String tn = getTypeName(o);
+        // this is possible because type is interned and literals are interned
+        sif("\""+o.getName()+"\" == type");
+        {
+          if(isUnit)
+          {
+            line(tn+" obj;");
+            sif("baseObj != null");
+            {
+              line("obj = ("+tn+")baseObj;");
+            }
+            pelse();
+            {
+              line("obj = new "+tn+"();");
+            }
+            eif();
+          }
+          else
+          {
+            line(tn+" obj = new "+tn+"();");
+          }
+          line("parseArguments(obj, po);");
+          sforeach("po.getProperties()","PetalProperty","prop");
+          {
+            sif("prop.getName() != \"quidu\" && nameForQuidu != null");
+            {
+              line("resetNameForQuidu(prop);");
+            }
+            eif();
+            line("parsePropertiesOf"+tn+"(obj,prop,prop.getName());");
+          }
+          eforeach();
+          if(isUnit)
+          {
+            sif("baseObj == null");
+            {
+              line("loadUnitIfNeeded(obj);");
+            }
+            eif();
+          }
+          line("return obj;");
+        }
+
+        eif();
+      }
+      line("return super.parseObject(po,baseObj);");
+    }
+    eblock();
+  }
+
+
+  public void generateParseProperties()
+  {
+    for(Iterator i = model.getMofClass().refAllOfClass().iterator();i.hasNext();)
+    {
+      MofClass o = (MofClass)i.next();
+      //System.out.println("<<DEBUG>>: "+o.getName());
+      MofClass sc = (MofClass)getOneValue(o.getSupertypes());
+      String tn = getTypeName(o);
+      String sctn = sc != null ? getTypeName(sc) : "PBase";
+      line("private void parsePropertiesOf"+tn+"(final "+tn+
+      " obj, final PetalProperty prop, final String nm)");
+      sblock();
+      {
+         for(Iterator j = o.getContents().iterator();j.hasNext();)
+         {
+            Object jo = j.next();
+            if(jo instanceof Attribute)
+            {
+              Attribute a = (Attribute)jo;
+              Classifier at = a.getType();
+              String atnm = getTypeName(at);
+
+              sif("\""+a.getName()+"\" == nm");
+              {
+                if("value".equals(a.getName()) && "Attribute".equals(o.getName()))
+                {
+                  // special case, no any in mof
+                  line("obj.setValue(parseAttributeValue(obj, prop));");
+                }
+                else if(at instanceof EnumerationType)
+                {
+                  if("IgnoredValue".equals(at.getName()))
+                  {
+                    line("ignore(prop);");
+                  }
+                  else
+                  {
+                    sif("checkString(prop)");
+                    {
+                      line("obj."+setter(a,atnm+".forName((String)prop.getValue())")+";");
+                    }
+                    eif();
+                  }
+                }
+                else if(at instanceof PrimitiveType)
+                {
+                  String atnm1 = getName1(at);
+                  sif("check"+atnm1+"(prop)");
+                  {
+                    line("obj."+setter(a,"extract"+atnm1+"(prop.getValue())")+";");
+                  }
+                  eif();
+                }
+                else if(at instanceof MofClass)
+                {
+                  if(a.getMultiplicity().getUpper() == 1)
+                  {
+                    sif("checkPetalObject(prop)");
+                    {
+                      line("PBase val = parseObject((PetalObject)prop.getValue());");
+                      sif("val instanceof "+atnm);
+                      {
+                        line("obj."+setter(a,"("+atnm+")val")+";");
+                      }
+                      pelse();
+                      {
+                        line("errorWrongObjectType(prop,"+atnm+".class);");
+                      }
+                      eif();
+                    }
+                    eif();
+                  }
+                  else
+                  {
+                    sif("checkList(prop)");
+                    {
+                      sforeach("((PetalListValue)prop.getValue())","Object","uv");
+                      {
+                        sif("uv instanceof PetalObject");
+                        {
+                          line("PBase val = parseObject((PetalObject)uv);");
+                          sif("val instanceof "+atnm);
+                          {
+                            line("obj."+adder(a,"("+atnm+")val")+";");
+                          }
+                          pelse();
+                          {
+                            line("errorWrongObjectType(prop,"+atnm+".class);");
+                          }
+                          eif();
+                        }
+                        pelse();
+                        {
+                          line("errorPetalObjectExpected(prop, uv);");
+                        }
+                        eif();
+                      }
+                      eforeach();
+                    }
+                    eif();
+                  }
+                }
+                else
+                {
+                  line("// ERROR ATTRIBUTE: "+a.getQualifiedName());
+                }
+
+                line("return;");
+              }
+              eif();
+            }
+
+            if(jo instanceof Reference)
+            {
+              Reference ref = (Reference)jo;
+              MofClass cls = (MofClass)ref.getType();
+              Collection clscol = new ArrayList(cls.allSupertypes());
+              clscol.add(cls);
+              boolean isRoseItem = false;
+              boolean isRoseItemView = false;
+              for(Iterator sci=clscol.iterator();sci.hasNext();)
+              {
+                MofClass cls_sc = (MofClass)sci.next();
+                if("RoseItem".equals(cls_sc.getName()))
+                {
+                  isRoseItem = true;
+                  break;
+                }
+                if("RoseItemView".equals(cls_sc.getName()))
+                {
+                  isRoseItemView = true;
+                  break;
+                }
+              }
+              if(isRoseItem)
+              {
+                if(!"quidu".equals(ref.getName()))
+                {
+                  sif("\""+ref.getName()+"\" == nm");
+                  {
+                    line("// next will be quidu ");
+                    sif("checkString(prop)");
+                    {
+                      line("nameForQuidu = (String)prop.getValue();");
+                      line("propForQuidu = nm;");
+                    }
+                    eif();
+                    line("return;");
+                  }
+                  eif();
+                }
+              }
+              else if(isRoseItemView)
+              {
+                sif("\""+ref.getName()+"\" == nm");
+                {
+                  sif("checkRef(prop)");
+                  {
+                    line("enlistDiagramRef(obj, prop);");
+                  }
+                  eif();
+                  line("return;");
+                }
+                eif();
+              }
+              else
+              {
+                throw new RuntimeException("Non roseItem reference: "+cls.getName());
+              }
+            }
+
+         }
+
+        line("parsePropertiesOf"+sctn+"(obj,prop,nm);");
+      }
+      eblock();
+    }
+  }
+
+  boolean isSubtype(MofClass cls, String name)
+  {
+    Collection clscol = new ArrayList(cls.allSupertypes());
+    clscol.add(cls);
+    for(Iterator sci=clscol.iterator();sci.hasNext();)
+    {
+      MofClass cls_sc = (MofClass)sci.next();
+      if(name.equals(cls_sc.getName()))
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
+
+}
+@

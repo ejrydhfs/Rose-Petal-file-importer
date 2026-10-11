@@ -1,0 +1,26 @@
+head	1.1;
+access;
+symbols
+	release0_0_2:1.1
+	release0_0_1:1.1;
+locks; strict;
+comment	@:: @;
+
+
+1.1
+date	2002.04.29.08.27.27;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@initial checkin
+@
+text
+@set CLASSPATH=build\classes;%CLASSPATH%
+java net.sf.rosepetal.dom.parser.PetalParser -debug input.mdl >test.p@

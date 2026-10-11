@@ -1,0 +1,1805 @@
+head	1.2;
+access;
+symbols
+	release0_0_2:1.2
+	release0_0_1:1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2002.04.29.10.56.05;	author const;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2002.04.29.08.27.28;	author const;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@uncommented two lines
+@
+text
+@/*
+ *  Rose Petal file API.
+ *  Copyright (C) 2001-2002, Free Software Foundation.
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Library General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Library General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Library General Public
+ *  License along with this library; if not, write to the
+ *  Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *  Boston, MA  02111-1307, USA. The text of license can be also found
+ *  at http://www.gnu.org/copyleft/lgpl.html
+ */
+package net.sf.rosepetal.nsuml;
+
+import java.io.*;
+
+import java.util.*;
+
+import net.sf.rosepetal.ast.*;
+
+import ru.novosoft.uml.*;
+import ru.novosoft.uml.foundation.core.*;
+import ru.novosoft.uml.foundation.data_types.*;
+import ru.novosoft.uml.foundation.extension_mechanisms.*;
+import ru.novosoft.uml.behavior.use_cases.*;
+import ru.novosoft.uml.behavior.common_behavior.*;
+import ru.novosoft.uml.behavior.state_machines.*;
+import ru.novosoft.uml.behavior.collaborations.*;
+import ru.novosoft.uml.behavior.activity_graphs.*;
+import ru.novosoft.uml.model_management.*;
+
+import ru.novosoft.uml.xmi.*;
+
+/** instances of this class can be used to convert model
+  * from petal file format to UML format.
+  * Currently it only converts Logical View package.
+  */
+
+public class PetalToUml
+{
+  public static void main (String args[])
+  {
+    try
+    {
+      java.io.InputStream in = null;
+      java.io.OutputStream out = null;
+      java.io.File petalFile = null;
+      if (args.length > 0)
+      {
+        petalFile = new File(args[0]);
+      }
+      else
+      {
+        System.err.println("need more args");
+        return;
+      }
+
+      if (args.length < 2)
+      {
+        out = System.out;
+      }
+      else
+      {
+        out = new java.io.FileOutputStream(args[1]);
+      }
+      MModel m;
+      long st = System.currentTimeMillis();
+      m = parsePetalToUML(petalFile, new PrintWriter(System.err));
+      System.err.println("Parsing finished: "+(System.currentTimeMillis()-st));
+      XMIWriter xmiw = new XMIWriter(m, new PrintWriter(out));
+
+      try
+      {
+        xmiw.gen();
+      }
+      catch(IncompleteXMIException ex)
+      {
+        Object objI = xmiw.getNotContainedElements().iterator();
+
+        if (objI instanceof Iterator)
+        {
+          Iterator i = (Iterator)objI;
+          while(i.hasNext())
+          {
+            Object obj = i.next();
+            System.err.println("[Error] Model element '" + obj.toString() + "' is not contained.");
+          }
+        }
+        else
+        {
+          java.util.Iterator i = (java.util.Iterator)objI;
+          while(i.hasNext())
+          {
+            Object obj = i.next();
+            System.err.println("[Error] Model element '" + obj.toString() + "' is not contained.");
+          }
+        }
+      }
+    }
+    catch (Exception ex)
+    {
+      ex.printStackTrace();
+    }
+  }
+
+  MFactory factory;
+  public MFactory getFactory()
+  {
+    return factory;
+  }
+  /** get package which contains stereotypes of the model */
+  protected MPackage stereotypesPackage;
+  /** map from name to stereotype */
+  protected HashMap  name2sterotype = new HashMap();
+  /** class to association */
+  protected HashMap class2assoc = new HashMap();
+  /** association to class */
+  protected HashMap assoc2class = new HashMap();
+  /** module to related classes */
+  protected HashMap module2classes = new HashMap();
+
+  /** petal file model */
+  protected PDesign petalModel;
+  /** uml model */
+  protected MModel umlModel;
+
+  /** create a converter with given source model
+    * @@param m a source model
+    */
+  public static MModel parsePetalToUML(File f, PrintWriter log)
+  {
+    MModel m = new MModelImpl();
+    new PetalToUml((PDesign)(new PetalASTLoader(f,log)).parse(),m);
+    return m;
+  }
+
+
+  public PetalToUml(PDesign m, MModel uml)
+  {
+    petalModel = m;
+    umlModel = uml;
+    factory = uml.getFactory();
+    convert();
+  }
+
+  /** perform conversion
+    */
+  protected void convert()
+  {
+    // preprocess properties
+    processProperties();
+    // create all categories
+    processCategories();
+    // create all classes
+    processAssociationClasses();
+    // create all classes
+    processClasses();
+    // fill content of classes
+    processClassContent();
+    /// create all subsystem
+    processSubSystem();
+
+    // process all associtions
+    processAssociations();
+    // set model properties
+    elementTaggedValues = modelTaggedValues;
+    fillTaggedValues(umlModel);
+  }
+
+
+  public void processComponents(PSubSystem psubsyst,ru.novosoft.uml.model_management.MSubsystem msubsyst)
+  {
+    MComponent mcomp;
+    PSubSystem pss  ;
+    MSubsystem mss;
+    MClassifier mcl;
+    Iterator ii;
+    PModule module = null;
+    MElementResidence e_resid;
+    Iterator i = psubsyst.getPhysicalModels().iterator();
+    while (i.hasNext()) {
+      PRoseItem o = (PRoseItem)i.next();
+      if (o instanceof PModule)
+      {
+        module = (PModule)o;
+        mcomp = factory.createComponent();
+        processElement(module,mcomp);
+        fillTaggedValues(mcomp);
+        ii = ((ArrayList)module2classes.get(module)).iterator();
+        while (ii.hasNext()) {
+            PClass cl = (PClass)ii.next();
+            mcl = (MClassifier)petalObj2umlObj.get(cl);
+            e_resid = factory.createElementResidence();
+            e_resid.setResident(mcl);
+            e_resid.setVisibility(MVisibilityKind.forValue(0));
+            mcomp.addResidentElement(e_resid);
+        }
+        msubsyst.addOwnedElement(mcomp);
+      }
+      else if (o instanceof PSubSystem)
+      {
+        pss = (PSubSystem)o;
+        mss = factory.createSubsystem();
+        processElement(pss,mss);
+        fillTaggedValues(mss);
+        processComponents(pss,mss);
+        //msubsyst.addOwnedElement(comp,MVisibilityKind.PUBLIC, false);
+        msubsyst.addOwnedElement(mss);
+      }
+    }
+  }
+
+
+
+  protected void processSubSystem()
+  {
+    PSubSystem psubsyst = petalModel.getRootSubsystem();
+    if (psubsyst != null) {
+        ru.novosoft.uml.model_management.MSubsystem msubsyst = new ru.novosoft.uml.model_management.MSubsystemImpl();
+        processElement(psubsyst,msubsyst);
+        fillTaggedValues(msubsyst);
+        //processSubsystems(psubsyst,msubsyst);
+        processComponents(psubsyst,msubsyst);
+        umlModel.addOwnedElement(msubsyst);
+    }
+  }
+
+
+
+  protected void processClassContent()
+  {
+    ArrayList classes = new ArrayList();
+    getAllClasses(petalModel.getRootCategory(), classes);
+    Iterator i = classes.iterator();
+    while (i.hasNext())
+    {
+      PClass c = (PClass)i.next();
+      MClassifier cls = (MClassifier)getElement(c);
+
+      //System.out.println("Class " + c.getName());
+
+      // process template arguments
+      if (c instanceof PInstantiatedClass)
+      {
+        MBinding b = factory.createBinding();
+        PInstantiatedClass ic = (PInstantiatedClass)c;
+        if (ic.getInstantiation() != null)
+        {
+          PClass bc = ic.getInstantiation().getSupplier();
+          b.addSupplier((MModelElement)getElement(bc));
+          b.addClient(cls);
+          Iterator k = ic.getParameters().iterator();
+          while (k.hasNext())
+          {
+            PParameter p = (PParameter)k.next();
+            if ((p.getType() != null && p.getType().length()!=0))
+            {
+              throw new IllegalStateException("parameters of class "+c.getName()+" cannot be handled");
+            }
+            b.addArgument(getClassByName(cls, p.getName()));
+          }
+
+          cls.getNamespace().addOwnedElement(b);
+          b.setVisibility(MVisibilityKind.PRIVATE);
+        }
+      }
+
+      cls.setAbstract(c.isAbstract());
+
+      // process attributes
+      Iterator j = c.getClassAttributes().iterator();
+      while (j.hasNext())
+      {
+        PClassAttribute pat = (PClassAttribute)j.next();
+        MAttribute mat = factory.createAttribute();
+        processAttribute(cls, pat, mat);
+        cls.addFeature(mat);
+      }
+      // process operations
+      j = c.getOperations().iterator();
+      while (j.hasNext())
+      {
+
+		  POperation pop = (POperation)j.next();
+        MOperation mop = factory.createOperation();
+        //System.out.println("  Operation " + pop.getName());
+        processOperation(cls, pop, mop);
+        cls.addFeature(mop);
+      }
+      // process inheritance
+      j = c.getSuperclasses().iterator();
+      while (j.hasNext())
+      {
+        PInheritanceRelationship pir = (PInheritanceRelationship)j.next();
+        MGeneralization mgen = factory.createGeneralization();
+        processGeneralization(pir, mgen);
+        cls.addGeneralization(mgen);
+        mgen.setVisibility(MVisibilityKind.PUBLIC);
+        mgen.setSpecification(false);
+        cls.addOwnedElement(mgen);
+      }
+      j = c.getRealizedInterfaces().iterator();
+      while (j.hasNext())
+      {
+        PRealizeRelationship  d = (PRealizeRelationship)j.next();
+        MAbstraction  md = factory.createAbstraction();
+        processAbstraction(d, md);
+        cls.addClientDependency(md);
+        //cls.addOwnedElement(mgen, MVisibilityKind.PUBLIC, false);
+      }
+    }
+  }
+
+  protected void processAttribute(MClassifier ctx, PClassAttribute pat, MAttribute mat)
+  {
+    processElement(pat, mat);
+    fillTaggedValues(mat);
+    if (pat.getType() != null)
+    {
+      mat.setType(getClassByName(ctx, pat.getType()));
+    }else {
+      mat.setType(null);
+    }
+    mat.setInitialValue(new MExpression("", pat.getInitv()));
+    MVisibilityKind vis = convertVisiblity(pat.getExportControl());
+    mat.setVisibility(vis);
+    //System.out.println("Attribute: " + mat.getName() + " - " + vis.name() + " - " + pat.getExportControl());
+
+    MScopeKind sk;
+    if (pat.isStatic())
+    {
+      sk = MScopeKind.CLASSIFIER;
+    }
+    else
+    {
+      sk = MScopeKind.INSTANCE;
+    }
+    mat.setOwnerScope(sk);
+  }
+
+  protected void processAssociations()
+  {
+    ArrayList as = new ArrayList();
+    getAllAssociations(petalModel.getRootCategory(), as);
+    Iterator i = as.iterator();
+    while (i.hasNext())
+    {
+      PAssociation pa = (PAssociation)i.next();
+      MAssociation ma;
+      if (pa.getAssociationClass() == null)
+      {
+        ma = factory.createAssociation();
+
+        processElement(pa, ma);
+        elementTaggedValues.put("derived", pa.isDerived() ? "true" : "false");
+        fillTaggedValues(ma);
+
+        umlModel.addOwnedElement(ma);
+      }
+      else
+      {
+        ma = (MAssociation)getElement((PClass)assoc2class.get(pa));
+
+        ma.setTaggedValue("derived", pa.isDerived() ? "true" : "false");
+      }
+      PRole r1 = (PRole)pa.getRoles().get(0);
+      PRole r2 = (PRole)pa.getRoles().get(1);
+      MAssociationEnd ae1 = factory.createAssociationEnd();
+      MAssociationEnd ae2 = factory.createAssociationEnd();
+      processRole(r1, r2, ae1);
+      processRole(r2, r1, ae2);
+      ma.addConnection(ae1);
+      ma.addConnection(ae2);
+    }
+  }
+  protected void processRole(PRole tr, PRole ar, MAssociationEnd ae)
+  {
+    //System.out.println("0");
+    processElement(tr, ae);
+    fillTaggedValues(ae);
+    //System.out.println("1");
+    ae.setNavigable(tr.isNavigable());
+    //System.out.println("2");
+    if (tr.getConstraints() != null && tr.getConstraints().equals("ordered"))
+    {
+      ae.setOrdering(MOrderingKind.ORDERED);
+    }
+    else
+    {
+      ae.setOrdering(MOrderingKind.UNORDERED);
+    }
+    //System.out.println("3");
+    if (tr.isAggregate())
+    {
+      if (ar.getContainment() != null && (ar.getContainment().equals("ByValue") || ar.getContainment().equals("By Value")))
+      {
+        ae.setAggregation(MAggregationKind.COMPOSITE);
+      }
+      else
+      {
+        ae.setAggregation(MAggregationKind.AGGREGATE);
+      }
+    }
+    else
+    {
+      ae.setAggregation(MAggregationKind.NONE);
+    }
+    //System.out.println("4");
+    MScopeKind sk;
+    if (tr.isStatic())
+    {
+      sk = MScopeKind.CLASSIFIER;
+    }
+    else
+    {
+      sk = MScopeKind.INSTANCE;
+    }
+    //System.out.println("5");
+    ae.setTargetScope(sk);
+    //System.out.println("6");
+    String mm = tr.getClientCardinality();
+    if (mm != null)
+    {
+      try
+      {
+        ae.setMultiplicity(new MMultiplicity(mm));
+      }
+      catch(Exception ex)
+      {
+        System.out.println("Multiplicity error: " + mm);
+      }
+    }
+
+    //System.out.println("7");
+    MVisibilityKind vis = convertVisiblity(tr.getExportControl());
+    ae.setVisibility(vis);
+
+    //System.out.println("AssociationEnd: " + ae.getName() + " - " + vis.name() + " - " + tr.getExportControl());
+
+    //System.out.println("8");
+    MClassifier mclsf = (MClassifier)(getClassByName((MClassifier)getElement(tr.getSupplier()), tr.getSupplier().getName()));
+    mclsf.addAssociationEnd(ae);
+
+    //System.out.println("9");
+    Iterator i = tr.getKeys().iterator();
+    while (i.hasNext())
+    {
+      PClassAttribute pat = (PClassAttribute)i.next();
+      MAttribute mat = factory.createAttribute();
+      processAttribute(mclsf, pat, mat);
+      ae.addQualifier(mat);
+    }
+  }
+
+  protected MClassifier unresolvedClass(MClassifier context, String name)
+  {
+    throw new IllegalArgumentException("name \'"+name+"\' could not be handled");
+  }
+
+
+  protected void processGeneralization(PInheritanceRelationship pir, MGeneralization mgen)
+  {
+    processElement(pir, mgen);
+    fillTaggedValues(mgen);
+    mgen.setParent((MClassifier)getElement(pir.getSupplier()));
+  }
+  protected void processAbstraction(PRealizeRelationship rr, MAbstraction usg)
+  {
+    processElement(rr, usg);
+    fillTaggedValues(usg);
+    usg.setStereotype(getStereotype("realize"));
+    usg.addSupplier((MClassifier)getElement(rr.getSupplier()));
+  }
+
+  protected void processClasses()
+  {
+    ArrayList classes = new ArrayList();
+    getAllClasses(petalModel.getRootCategory(), classes);
+    Iterator i = classes.iterator();
+    while (i.hasNext())
+    {
+      PClass c = (PClass)i.next();
+      MClassifier cls = createClass(c);
+      processElement(c, cls);
+      if (cls instanceof MClass)
+      {
+        elementTaggedValues.put("persistence", c.getPersistence() == PPersistenceKind.PERSISTENT?"true":"false");
+        ((MClass)cls).setActive(c.getConcurrency() == PConcurrencyKind.ACTIVE);
+      }
+      fillTaggedValues(cls);
+      if (c instanceof PParameterizedClass)
+      {
+        Iterator k = ((PParameterizedClass)c).getParameters().iterator();
+        while (k.hasNext())
+        {
+          PParameter p = (PParameter)k.next();
+          if ((p.getType() != null && p.getType().length()!=0))
+          {
+            throw new IllegalStateException("parameters of class "+c.getName()+" cannot be handled");
+          }
+          MTemplateParameter tp = factory.createTemplateParameter();
+          MClass pc = factory.createClass();
+          pc.setName(convertName(p.getName()));
+          tp.setModelElement2(pc);
+          pc.setVisibility(MVisibilityKind.PRIVATE);
+          cls.addTemplateParameter(tp);
+          cls.addOwnedElement(pc);
+        }
+      }
+      PStateMachine sm = c.getStatemachine();
+      if (sm!= null) {
+        ArrayList sms = new ArrayList();
+        MStateMachine stM = factory.createStateMachine();
+        processElement(sm,stM);
+        fillTaggedValues(stM);
+        processStateMachine(sm,stM);
+        sms.add(stM);
+        //cls.setBehaviors(sms);
+        cls.addBehavior(stM);
+        cls.addOwnedElement(stM);
+      }
+
+//      System.out.println("test "+c.getParentCategory().getName());
+      MPackage pp = (MPackage)getElement(c.getParent());
+      if (pp==null)
+      {
+        System.out.println("error");
+      }
+      cls.setVisibility(convertVisiblity(c.getExportControl()));
+      cls.setSpecification(false);
+      pp.addOwnedElement(cls);
+      //System.out.println("Class: " + cls.getName() + " - " + vis.name() + " - " + c.getExportControl());
+      if(c.getModule()!=null)
+      {
+        PModule m = c.getModule();
+        ArrayList l = (ArrayList)module2classes.get(m);
+        if(l == null)
+        {
+          l = new ArrayList();
+          module2classes.put(m,l);
+        }
+        l.add(c);
+      }
+
+    }
+  }
+  public void processStateMachine(PStateMachine psm, MStateMachine ssm)
+  {
+      ArrayList msts = new ArrayList();
+      // convertStates including transitions, transition must include Event
+      List psts = psm.getStates();
+      //System.out.println("here: "+psm.getName()+"  "+psts.size());
+      Iterator ii = psts.iterator();
+      processStates(psts,msts);
+      MCompositeState compstate = factory.createCompositeState();
+      Iterator i = msts.iterator();
+      int k = 0;
+      while (i.hasNext()) {
+        //k++;
+        MStateVertex stv = (MStateVertex)i.next();
+        compstate.addSubvertex(stv);
+        //System.out.println(k+" : "+stv.getName());
+      }
+      //compstate.setSubvertexes(msts);
+      ssm.setTop(compstate);
+      //convert states
+      ii = psts.iterator();
+      while(ii.hasNext()){
+        PState pstate = (PState)ii.next();
+        //System.out.println(pstate);
+          if (!( pstate instanceof PSynchronizationState  /*pstate instanceof PActionState  || pstate instanceof PDecision */))
+             {
+                processStateTransitions(pstate);
+             }
+      }
+  }
+
+
+  HashMap name2class;
+
+  protected MClassifier getClassByName(MClassifier context, String name)
+  {
+    if (name.indexOf('<') != -1)
+    {
+      int idx1 = name.indexOf('<');
+      int idx2 = name.lastIndexOf('>');
+      if (idx2 == -1)
+      {
+        return unresolvedClass(context, name);
+      }
+      String base = name.substring(0, name.indexOf('<')).trim();
+      String paramsStr = name.substring(idx1, idx2+1);
+      MClassifier baseClass = getClassByName(context, base);
+      int idlv = 0;
+      int i,n = paramsStr.length();
+      List params = new ArrayList();
+      int ppos = 0;
+
+      MBinding b = factory.createBinding();
+
+      for (i=0; i<n; i++)
+      {
+        switch (paramsStr.charAt(i))
+        {
+        case '<':
+          idlv ++;
+          break;
+        case '>':
+          idlv --;
+          break;
+        case ',':
+          if (idlv == 0)
+          {
+            //params.add(getClassByName(context, paramsStr.substring(ppos,i).trim()));
+            b.addArgument(getClassByName(context, paramsStr.substring(ppos,i).trim()));
+            ppos = i+1;
+          }
+          break;
+        }
+      }
+      if (idlv != 0)
+      {
+        return unresolvedClass(context, name);
+      }
+
+      //params.add(getClassByName(context, paramsStr.substring(ppos+1,n-1).trim()));
+      b.addArgument(getClassByName(context, paramsStr.substring(ppos+1,n-1).trim()));
+
+      //b.setArguments(params);
+      b.addSupplier(baseClass);
+      b.setVisibility(MVisibilityKind.PRIVATE);
+
+      MClassifier c;
+
+      try
+      {
+        c = (MClassifier)baseClass.getClass().newInstance();
+        c.setStereotype(baseClass.getStereotype());
+        c.setName(name);
+        context.getNamespace().addOwnedElement(c);
+      }
+      catch(Exception ex)
+      {
+        throw new RuntimeException("Unexpected exception"+ex);
+      }
+      b.addClient(c);
+      c.getNamespace().addOwnedElement(b);
+
+      return c;
+    }
+    else if (name.indexOf('.') != -1)
+    {
+      return unresolvedClass(context, name);
+    }
+    else
+    {
+      Object objI = context.getTemplateParameters().iterator();
+      if (objI instanceof Iterator)
+      {
+        Iterator i = (Iterator)objI;
+        while (i.hasNext())
+        {
+          MTemplateParameter tp = (MTemplateParameter)i.next();
+          MModelElement e = tp.getModelElement2();
+          if (e instanceof MClassifier && e.getName().equals(name))
+          {
+            return (MClassifier)e;
+          }
+        }
+      }
+      else
+      {
+        java.util.Iterator i = (java.util.Iterator)objI;
+        while (i.hasNext())
+        {
+          MTemplateParameter tp = (MTemplateParameter)i.next();
+          MModelElement e = tp.getModelElement2();
+          if (e instanceof MClassifier && e.getName().equals(name))
+          {
+            return (MClassifier)e;
+          }
+        }
+      }
+
+      MClassifier c = (MClassifier)context.lookup(name);
+      if (c != null)
+      {
+        return c;
+      }
+      MNamespace ns = context.getNamespace();
+      if (null != ns)
+      {
+        if(ns instanceof MClassifier)
+        {
+          return getClassByName((MClassifier)ns, name);
+        }
+        else
+        {
+          //System.out.println("name : "+name);
+          c = (MClassifier)ns.lookup(name);
+          if (c != null)
+          {
+            return c;
+          }
+        }
+      }
+      c = (MClassifier)umlModel.lookup(name);
+      if (c != null)
+      {
+        return c;
+      }
+      c = (MClassifier)umlModel.lookup("Logical View::"+name);
+      if (c != null)
+      {
+        return c;
+      }
+      if (name2class == null)
+      {
+        name2class = new HashMap();
+        ArrayList classes = new ArrayList();
+        getAllClasses(petalModel.getRootCategory(), classes);
+        Iterator i = classes.iterator();
+        while (i.hasNext())
+        {
+          PClass pc = (PClass)i.next();
+          name2class.put(pc.getName(), getElement(pc));
+        }
+      }
+      c = (MClassifier)name2class.get(name);
+      if (c != null)
+      {
+        return c;
+      }
+      return unresolvedClass(context, name);
+    }
+  }
+
+
+  protected void processStateTransitions(PState st){
+    Iterator i;
+    if (st.getTransitions().size() != 0) {
+      i = st.getTransitions().iterator();
+      while (i.hasNext()) {
+          PStateTransition p_tr = (PStateTransition)i.next();
+          MTransition m_tr = (MTransition)petalObj2umlObj.get(p_tr);
+          processTransition(p_tr,m_tr);
+      }
+    }
+    if (st.getStatemachine() != null && st.getStatemachine().getStates().size() != 0) {
+      i = st.getStatemachine().getStates().iterator();
+      while (i.hasNext()) {
+        PState subst = (PState)i.next();
+        if (!(subst instanceof PSynchronizationState /* || pstate instanceof PActionState  ||  subst instanceof PDecision*/))
+             {
+                 processStateTransitions(subst);
+             }
+      }
+    }
+  }
+
+  protected void processState(PState pstate,MStateVertex mstate)
+  {
+     MTransition  m_tr ;
+      String       when;
+      MEvent me;
+      PEvent pe;
+      List         p_state_trs = pstate.getTransitions();
+      ArrayList    m_state_trs = new ArrayList();
+      processElement(pstate,mstate);
+      fillTaggedValues(mstate);
+      Iterator     i;
+      String condition = null;
+      MGuard guard;
+      if (p_state_trs != null) {
+          i = p_state_trs.iterator();
+          while(i.hasNext()){
+            PStateTransition p_tr = (PStateTransition)i.next();
+            m_tr = factory.createTransition();
+            processElement(p_tr,m_tr);
+            fillTaggedValues(m_tr);
+            pe = p_tr.getEvent();
+            if (pe != null) {
+                me = factory.createTimeEvent();
+                String arg = pe.getParameters();
+                if (arg != null && ! arg.equals("")) {
+                  MParameter p ;
+                  ArrayList args = new ArrayList();
+                  StringTokenizer st = new StringTokenizer(arg,",");
+                  while (st.hasMoreTokens()) {
+                    p = factory.createParameter();
+                    p.setName(st.nextToken().trim());
+                    args.add(p);
+                    me.addParameter(p);
+                  }
+                  //me.setParameters(args);
+                }
+                processElement(pe,me);
+                fillTaggedValues(me);
+                m_tr.setTrigger(me);
+            } else
+                m_tr.setTrigger(null);
+            condition = p_tr.getCondition();
+            if (condition != null) {
+              guard = factory.createGuard();
+              guard.setName(condition);
+              m_tr.setGuard(guard);
+            }
+            else
+            {
+              m_tr.setGuard(null);
+            }
+            m_state_trs.add(m_tr);
+
+            mstate.addOutgoing(m_tr);
+          }
+      }
+      //mstate.setOutgoings(m_state_trs);
+
+      List p_acts = pstate.getActions();
+      PAction p_act;
+      Iterator ii;
+      StringBuffer entry = new StringBuffer();
+      StringBuffer exit = new StringBuffer();
+      StringBuffer doActivity= new StringBuffer();
+      MActionSequence entry_as = factory.createActionSequence();
+      MActionSequence exit_as = factory.createActionSequence();
+      MActionSequence do_as = factory.createActionSequence();
+      MTransition m_intenal_trs;
+      ArrayList int_trs = new ArrayList();
+      MAction action = null;
+      if (p_acts != null && ( ! (mstate instanceof MPseudostate)) ) {
+         ii= p_acts.iterator();
+         while (ii.hasNext()) {
+           p_act = (PAction)ii.next();
+           when = p_act.getActionTime().getWhen();
+           action = null;
+           if (p_act instanceof PSendEvent && ! when.equals("UponEvent")) {
+                 if (((PSendEvent)p_act).getEvent() != null) {
+                    action = factory.createSendAction();
+                    action.setName(((PSendEvent)p_act).getEvent().getName());
+                    //System.out.println("setName "+((PSendEvent)p_act).getEvent().getName());
+                    //processElement(act.getEvent(),sa);
+                   ArrayList ps = new ArrayList();
+                   if (((PSendEvent)p_act).getTarget() != null && !((PSendEvent)p_act).getTarget().equals("")) {
+                     ru.novosoft.uml.foundation.data_types.MObjectSetExpression ose = new ru.novosoft.uml.foundation.data_types.MObjectSetExpression("",((PSendEvent)p_act).getTarget());
+                     action.setTarget(ose);
+                   }
+                   if (((PSendEvent)p_act).getParameters() != null) {
+                      String args = ((PSendEvent)p_act).getParameters();
+                      MArgument p = factory.createArgument();
+                      p.setName(args);
+                      ps.add(p);
+                      //action.setActualArguments(ps);
+                      action.addActualArgument(p);
+                   }
+                 }
+           } else if (p_act instanceof PAction && ! when.equals("UponEvent")) {
+              action = factory.createAction();
+              //System.out.println("setName "+p_act.getName());
+              action.setName(p_act.getName());
+           } else if (when.equals("UponEvent")) {
+              m_intenal_trs = factory.createTransition();
+              processInternalTransition(p_act,m_intenal_trs);
+              int_trs.add(m_intenal_trs);
+              ((MState)mstate).addInternalTransition(m_intenal_trs);
+              continue;
+           }
+           if (action != null) {
+              if (when.equals("Entry"))
+              {
+                 entry_as.addAction(action);
+              }
+              else if (when.equals("Exit"))
+              {
+                 exit_as.addAction(action);
+              }
+              else if (when.equals("Activity"))
+              {
+                 do_as.addAction(action);
+              }
+           }
+
+         }
+         if (mstate instanceof MState) {
+            if (int_trs.size() != 0) {
+               //((MState)mstate).setInternalTransitions(int_trs);
+            }
+         }
+         ((MState)mstate).setEntry(entry_as);
+         ((MState)mstate).setExit(exit_as);
+         ((MState)mstate).setDoActivity(do_as);
+      }
+
+  }
+
+  protected void processInternalTransition(PAction act,MTransition tr){
+     MActionSequence as = factory.createActionSequence();
+     processElement(act,tr);
+     fillTaggedValues(tr);
+     tr.setName("onEvent");
+     if (act.getActionTime().getCondition()!= null && ! act.getActionTime().getCondition().equals("")) {
+           MGuard guard = factory.createGuard();
+           guard.setName(act.getActionTime().getCondition());
+           tr.setGuard(guard);
+     }
+     else{
+        tr.setGuard(null);
+     }
+
+     if (act.getActionTime().getEvent() != null) {
+           MTimeEvent  me = factory.createTimeEvent();
+           me.setName(act.getActionTime().getEvent().getName());
+           String arg = act.getActionTime().getEvent().getParameters();
+            if (arg != null && ! arg.equals("")) {
+              MParameter p ;
+              ArrayList args = new ArrayList();
+              //StringTokenizer st = new StringTokenizer(arg,",");
+              // while (st.hasMoreTokens()) {
+                p = factory.createParameter();
+                //p.setName(st.nextToken().trim());
+                p.setName(arg);
+                args.add(p);
+              //}
+              //me.setParameters(args);
+              me.addParameter(p);
+            }
+            //processElement(act.getEvent(),me);
+            me.setName(act.getActionTime().getEvent().getName());
+            tr.setTrigger(me);
+     }  else{
+        tr.setTrigger(null);
+     }
+     if (act instanceof PSendEvent) {
+        if (((PSendEvent)act).getEvent() != null) {
+           MSendAction sa = factory.createSendAction();
+           sa.setName(((PSendEvent)act).getEvent().getName());
+           //processElement(act.getEvent(),sa);
+          ArrayList ps = new ArrayList();
+          if (((PSendEvent)act).getTarget() != null && !((PSendEvent)act).getTarget().equals("")) {
+            ru.novosoft.uml.foundation.data_types.MObjectSetExpression ose = new ru.novosoft.uml.foundation.data_types.MObjectSetExpression("",((PSendEvent)act).getTarget());
+            sa.setTarget(ose);
+          }
+          if (((PSendEvent)act).getParameters() != null) {
+             String args = ((PSendEvent)act).getParameters();
+             MArgument p = factory.createArgument();
+             p.setName(args);
+             ps.add(p);
+             //sa.setActualArguments(ps);
+             sa.addActualArgument(p);
+          }
+          as.addAction(sa);
+        }
+        //tr.addAction(sa);
+     } else{
+          MAction action = factory.createAction();
+          action.setName(act.getName());
+          as.addAction(action);
+     }
+     tr.setEffect(as);
+  }
+  protected void processTransition(PStateTransition p_tr,MTransition m_tr)
+  {
+    m_tr.setTarget((MStateVertex)petalObj2umlObj.get(p_tr.getTarget()));
+    MActionSequence as = factory.createActionSequence();
+    if (p_tr.getAction() != null) {
+      PAction p_act = p_tr.getAction();
+      MAction m_act = factory.createAction();
+      processElement(p_act,m_act);
+      fillTaggedValues(m_act);
+      as.addAction(m_act);
+    }
+    if (p_tr.getSendEvent()!= null) {
+       PSendEvent se = p_tr.getSendEvent();
+       MSendAction sa = factory.createSendAction();
+       processElement(se,sa);
+       fillTaggedValues(sa);
+       if (se.getEvent() != null) {
+         PEvent pe = se.getEvent();
+         MSignalEvent sige = factory.createSignalEvent();
+         processElement(pe,sige);
+         fillTaggedValues(sige);
+         MSignal s = factory.createSignal();
+         s.addOccurrence(sige);
+         sa.setSignal(s);
+       }
+       if (se.getTarget() != null && !se.getTarget().equals("")) {
+         ru.novosoft.uml.foundation.data_types.MObjectSetExpression ose = new ru.novosoft.uml.foundation.data_types.MObjectSetExpression("",se.getTarget());
+         sa.setTarget(ose);
+       }
+       MArgument p = null;
+       ArrayList ps = new ArrayList();
+       if (se.getParameters() != null) {
+          String args = se.getParameters();
+          /*StringTokenizer st = new StringTokenizer(args,",");
+          while (st.hasMoreTokens()) {
+             p = factory.createArgument();
+             p.setName(st.nextToken());
+             ps.add(p);
+          } */
+          p = factory.createArgument();
+          p.setName(args);
+          ps.add(p);
+          sa.addActualArgument(p);
+       }
+       //sa.setActualArguments(ps);
+       as.addAction(sa);
+    }
+    m_tr.setEffect(as);
+  }
+
+  public void processStates(List p_sts,ArrayList m_sts){
+    ArrayList mstates = new ArrayList();
+    Iterator i = p_sts.iterator();
+    MStateVertex mstate = null;
+    MStateMachine stm ;
+    while(i.hasNext()){
+          PState pstate = (PState)i.next();
+          //System.out.println(pstate.getName()+"  "+pstate.getUniqueId());
+           if (!
+               ( pstate instanceof PSynchronizationState ||
+                 pstate instanceof PActionState  ||
+                 pstate instanceof PActivityState  ||
+                 pstate instanceof PDecision
+               )
+             )
+             {
+               switch (pstate.getType()!=null?pstate.getType().getValue():PStateKind._NORMAL) {
+                  case PStateKind._NORMAL:
+                    if(pstate.getStatemachine() != null){
+                      //System.out.println("ggg");
+                      mstate = factory.createSubmachineState();
+                      //MCompositeState compst = factory.createCompositeState();
+                      stm = factory.createStateMachine();
+                      //mstates = new ArrayList();
+                      //processStates(pstate.getStatemachine().getStates(),mstates);
+                      processStateMachine(pstate.getStatemachine(),stm);
+                       ((MSubmachineState)mstate).setSubmachine(stm);
+                    } else{
+                      mstate = factory.createState();
+                    }
+                  break;
+                  case PStateKind._START_STATE:
+                      {
+                          mstate = factory.createPseudostate();
+                          ((MPseudostate)mstate).setKind(MPseudostateKind.forValue(0));
+                      }
+                  break;
+                  case PStateKind._END_STATE:
+                      {
+                          mstate = factory.createPseudostate();
+                          ((MPseudostate)mstate).setKind(MPseudostateKind.forValue(1));
+                      }
+                  break;
+                  case PStateKind._HISTORY_ALL:
+                    {
+                        mstate = factory.createPseudostate();
+                        ((MPseudostate)mstate).setKind(MPseudostateKind.forValue(2));
+                    }
+                  break;
+                  /*case PState.T_HISTORYALL://change on HISTORY
+                    {
+                        mstate = factory.createPseudostate();
+                        ((MPseudostate)mstate).setKind(MPseudostateKind.forValue(3));
+                    }
+                  break;
+                  */
+                  default:
+                  System.out.println("BADDDDDDDDDDD");
+                  mstate = null;
+                  //say bad words
+                  break;
+               }
+             }
+           else if (pstate.getStatemachine() != null) {
+             mstate = factory.createSubactivityState();
+             //MCompositeState compst = factory.createCompositeState();
+             stm = factory.createStateMachine();
+             //mstates = new ArrayList();
+             //processStates(pstate.getStatemachine().getStates(),mstates);
+             //System.out.println("ggg");
+             processStateMachine(pstate.getStatemachine(),stm);
+             ((MSubactivityState)mstate).setSubmachine(stm);
+           }
+           else if (pstate instanceof PSynchronizationState) {
+             mstate = factory.createSynchState();
+           } else if ((pstate instanceof PActionState) ||
+                      (pstate instanceof PActivityState) ) {
+             mstate = factory.createActionState();
+           }
+           else if (pstate instanceof PDecision) {
+              mstate = factory.createPseudostate();
+              ((MPseudostate)mstate).setKind(MPseudostateKind.forValue(6));
+           }
+           if (mstate != null) {
+             processState(pstate,mstate);
+             m_sts.add(mstate);
+           }
+    }
+  }
+
+  protected void  processAssociationClasses()
+  {
+    ArrayList as = new ArrayList();
+    getAllAssociations(petalModel.getRootCategory(), as);
+    Iterator i = as.iterator();
+    while (i.hasNext())
+    {
+      PAssociation pa = (PAssociation)i.next();
+      if(pa.getAssociationClass() != null)
+      {
+        StringTokenizer stk = new StringTokenizer(
+          pa.getAssociationClass(),":",false);
+        if(stk.hasMoreTokens())
+        {
+          String h = stk.nextToken();
+          PClassCategory root;
+          if("Logical View".equals(h))
+          {
+            root = petalModel.getRootCategory();
+          }
+          else
+          {
+            throw new RuntimeException("Failed to process association class"+pa.getAssociationClass());
+          }
+          PRoseItem cur = root;
+          while(cur instanceof PClassCategory )
+          {
+            PClassCategory cat = (PClassCategory)cur;
+            String tk = null;
+            while(stk.hasMoreTokens())
+            {
+              tk = stk.nextToken();
+              if(tk.length() > 0)
+                break;
+            }
+            if(tk == null)
+              break;
+            for(Iterator iter = cat.getLogicalModels().iterator();iter.hasNext();)
+            {
+              PRoseItem ri = (PRoseItem)iter.next();
+              if(tk.equals(ri.getName()))
+              {
+                cur = ri;
+                break;
+              }
+            }
+          }
+          if(cur instanceof PClass)
+          {
+            class2assoc.put(cur,pa);
+            assoc2class.put(pa,cur);
+          }
+        }
+      }
+    }
+  }
+
+  protected void getAllAssociations(PClassCategory cat, List lst)
+  {
+    Iterator i = cat.getLogicalModels().iterator();
+    while (i.hasNext())
+    {
+      PElement e = (PElement)i.next();
+      if (e instanceof PClassCategory)
+      {
+        getAllAssociations((PClassCategory)e, lst);
+      }
+      else if (e instanceof PAssociation)
+      {
+        lst.add((PAssociation)e);
+      }
+    }
+  }
+
+  protected MException getException(MClassifier ctx, String name)
+  {
+    return (MException)getClassByName(ctx, name);
+  }
+
+  protected void processOperation(MClassifier ctx, POperation pop, MOperation mop)
+  {
+    processElement(pop, mop);
+    fillTaggedValues(mop);
+    if (pop.getSemantics() != null) {
+      mop.setSpecification(pop.getSemantics().getPDL());
+    } else
+      mop.setSpecification(null);
+    if (pop.getPostCondition() != null && pop.getPostCondition().getPDL() != null) {
+      MConstraint constr = factory.createConstraint();
+      constr.setName("postCondition");
+      constr.setBody(new ru.novosoft.uml.foundation.data_types.MBooleanExpression("",pop.getPostCondition().getPDL()));
+      mop.addConstraint(constr);
+    }
+    if (pop.getPreCondition() != null && pop.getPreCondition().getPDL() != null) {
+      MConstraint constr = factory.createConstraint();
+      constr.setName("preCondition");
+      constr.setBody(new ru.novosoft.uml.foundation.data_types.MBooleanExpression("",pop.getPreCondition().getPDL()));
+      mop.addConstraint(constr);
+    }
+    Iterator i = pop.getParameters().iterator();
+    while (i.hasNext())
+    {
+      PParameter pp = (PParameter)i.next();
+      MParameter mp = factory.createParameter();
+      processParameter(ctx, pp, mp);
+      mop.addParameter(mp);
+    }
+    MParameter mret = factory.createParameter();
+    mret.setName("");
+    //System.err.println(ctx.getName()+" : "+pop.getName());
+    if (pop.getResult() != null && pop.getResult().length() != 0 && !pop.getResult().equals("return"))
+    {
+      mret.setType(getClassByName(ctx, pop.getResult()));
+    }
+    mret.setKind(MParameterDirectionKind.RETURN);
+    mop.addParameter(mret);
+
+    MVisibilityKind vis = convertVisiblity(pop.getOpExportControl());
+    mop.setVisibility(vis);
+
+    //System.out.println("Operation: " + mop.getName() + " - " + vis.name() + " - " + pop.getExportControl());
+
+    switch(pop.getConcurrency().getValue())
+    {
+      case PConcurrencyKind._SEQUENTIAL:
+        mop.setConcurrency(MCallConcurrencyKind.SEQUENTIAL);
+        break;
+
+      case PConcurrencyKind._GUARDED:
+        mop.setConcurrency(MCallConcurrencyKind.GUARDED);
+        break;
+
+      case PConcurrencyKind._SYNCHRONOUS:
+        mop.setConcurrency(MCallConcurrencyKind.CONCURRENT);
+        break;
+
+      default:
+        throw new RuntimeException("Concurrency "+pop.getConcurrency()+" is unknown");
+    }
+
+    String exs = pop.getExceptions();
+    if (exs != null)
+    {
+      StringTokenizer stk = new StringTokenizer(exs, " ,", false);
+      while (stk.hasMoreTokens())
+      {
+        String ex = stk.nextToken();
+        mop.addRaisedSignal(getException(ctx, ex));
+      }
+    }
+    PStateMachine sm = pop.getStatemachine();
+      if (sm!= null) {
+        ArrayList sms = new ArrayList();
+        MStateMachine stM = factory.createStateMachine();
+        processElement(sm,stM);
+        fillTaggedValues(stM);
+        processStateMachine(sm,stM);
+        sms.add(stM);
+        //mop.setBehaviors(sms);
+        mop.addBehavior(stM);
+      }
+  }
+
+
+  protected MClassifier createClass(PClass c)
+  {
+    if (class2assoc.get(c) == null)
+    {
+
+      if (c.getStereotype() != null)
+      {
+        if ( c.getStereotype().equals("primitive") )
+        {
+          return factory.createClass();
+          //return factory.createPrimitive();
+        }
+        else if (c.getStereotype().equals("exception") )
+        {
+          return  factory.createException();
+        }
+      }
+      return factory.createClass();
+    }
+    else
+    {
+      MClassifier cls = factory.createAssociationClass();
+      enlistMapping((PAssociation)class2assoc.get(c), cls);
+      return cls;
+    }
+  }
+
+  protected void getAllClasses(PClassCategory cat, List lst)
+  {
+    Iterator i = cat.getLogicalModels().iterator();
+    while (i.hasNext())
+    {
+      PElement c = (PElement)i.next();
+      if (c instanceof PClassCategory)
+      {
+        getAllClasses((PClassCategory)c, lst);
+      }else if (c instanceof PClass)
+      {
+        lst.add((PClass)c);
+      }
+    }
+  }
+  public MVisibilityKind convertVisiblity(PExportControlKind ec)
+  {
+    if(ec == null)
+      return null;
+    if(ec == PExportControlKind.IMPLEMENTATION)
+      return null;
+    if(ec == PExportControlKind.PRIVATE)
+      return MVisibilityKind.PRIVATE;
+    if(ec == PExportControlKind.PROTECTED)
+      return MVisibilityKind.PROTECTED;
+    if(ec == PExportControlKind.PUBLIC)
+      return MVisibilityKind.PUBLIC;
+    throw new RuntimeException("unknown export control " + ec);
+  }
+  protected void processCategories()
+  {
+    ArrayList cats = new ArrayList();
+    PClassCategory rc = petalModel.getRootCategory();
+    getAllSubCategories(rc, cats);
+    ArrayList acats = new ArrayList(cats);
+    acats.add(rc);
+    Iterator i;
+    i = acats.iterator();
+    while (i.hasNext())
+    {
+      PClassCategory c = (PClassCategory)i.next();
+      MPackage pkg = factory.createPackage();
+      processElement(c, pkg);
+      fillTaggedValues(pkg);
+    }
+    ((MPackage)getElement(rc)).setVisibility(MVisibilityKind.PUBLIC);
+    ((MPackage)getElement(rc)).setSpecification(false);
+    umlModel.addOwnedElement((MPackage)getElement(rc));
+    i = cats.iterator();
+    while (i.hasNext())
+    {
+      PClassCategory c = (PClassCategory)i.next();
+      MPackage tp = (MPackage)getElement(c);
+      MPackage pp = (MPackage)getElement(c.getParent());
+      tp.setVisibility(MVisibilityKind.PUBLIC);
+      tp.setSpecification(false);
+      pp.addOwnedElement(tp);
+    }
+  }
+
+  protected void processParameter(MClassifier ctx, PParameter pp, MParameter mp)
+  {
+    mp.setName(convertName(pp.getName()));
+    if (pp.getType() != null)
+    {
+      mp.setType(getClassByName(ctx, pp.getType()));
+    }
+    if (pp.getInitv() != null)
+    {
+      mp.setDefaultValue(new MExpression("",pp.getInitv()));
+    }
+    if (pp.getDocumentation() != null)
+    {
+      mp.setTaggedValue("documentation", pp.getDocumentation());
+    }
+
+    mp.setKind(MParameterDirectionKind.IN);
+  }
+  /** base conversion */
+  public void processElement(PElement p, MModelElement m)
+  {
+    m.setName(convertName(p.getName()));
+    convertProperties(p,m);
+    enlistMapping(p, m);
+    if (p instanceof PRoseItem)
+    {
+      PRoseItem ri = (PRoseItem)p;
+      m.setStereotype(getStereotype(ri.getStereotype()));
+      if (ri.getDocumentation() != null)
+      {
+        elementTaggedValues.put("documentation", ri.getDocumentation());
+      }
+    }
+  }
+
+/** get stereotype object by name
+    * @@param the name of stereotype
+    * @@return stereotype of object
+    */
+  protected MStereotype getStereotype(String name)
+  {
+    if (name == null || name.length() == 0)
+    {
+      return null;
+    }
+    MStereotype rc = (MStereotype)name2sterotype.get(name);
+    if (rc == null)
+    {
+      if (stereotypesPackage == null)
+      {
+        stereotypesPackage = (MPackage)umlModel.lookup(name);
+        if (stereotypesPackage == null)
+        {
+          stereotypesPackage = factory.createPackage();
+          stereotypesPackage.setName("Model Stereotypes");
+          stereotypesPackage.setVisibility(MVisibilityKind.PUBLIC);
+          stereotypesPackage.setSpecification(false);
+          umlModel.addOwnedElement(stereotypesPackage);
+        }
+      }
+      rc = (MStereotype)stereotypesPackage.lookup(name);
+      if (rc == null)
+      {
+        rc = factory.createStereotype();
+        rc.setName(name);
+        rc.setVisibility(MVisibilityKind.PUBLIC);
+        rc.setSpecification(false);
+        stereotypesPackage.addOwnedElement(rc);
+        name2sterotype.put(name, rc);
+      }
+    }
+    return rc;
+  }
+  protected String convertName(String name)
+  {
+    if (name == null)
+    {
+      return "";
+    }
+    if (name.startsWith("$UNNAMED$"))
+    {
+      return "";
+    }
+    return name;
+  }
+
+  /** get list of all categories */
+  protected void getAllSubCategories(PClassCategory cat, List lst)
+  {
+    Iterator i = cat.getLogicalModels().iterator();
+    while (i.hasNext())
+    {
+      Object c = i.next();
+      if (c instanceof PClassCategory)
+      {
+        lst.add((PClassCategory)c);
+        getAllSubCategories((PClassCategory)c, lst);
+      }
+    }
+  }
+  public void fillTaggedValues(MModelElement m)
+  {
+    Iterator i = elementTaggedValues.keySet().iterator();
+    while(i.hasNext())
+    {
+      String tag = (String)i.next();
+
+      MTaggedValue tv = factory.createTaggedValue();
+      tv.setTag(tag);
+      tv.setValue((String)elementTaggedValues.get(tag));
+
+      m.addTaggedValue(tv);
+    }
+  }
+
+
+  /** map from petal object to uml object */
+  protected HashMap petalObj2umlObj = new HashMap();
+  /** enlist mapped objects */
+  protected void enlistMapping(PElement p, MElement m)
+  {
+    petalObj2umlObj.put(p, m);
+  }
+  /** enlist mapped objects */
+  protected MElement getElement(PBase p)
+  {
+    return (MElement)petalObj2umlObj.get(p);
+  }
+
+
+  /** Get model element property */
+  public String getElementProperty(MModelElement e, String tool, String name)
+  {
+    // Check query property set
+    if (name.equals("cg_style"))
+    {
+      // Check property set
+      String setname = e.getTaggedValue(propertyTag + tool);
+      if (null == setname)
+      {
+         return defaultPropertySet;
+      }
+      return setname;
+    }
+
+    // Check property value
+    String value = e.getTaggedValue(propertyTag + tool + "." + name);
+    if (null == value)
+    {
+      // Check property set
+      String setname = e.getTaggedValue(propertyTag + tool);
+      if (null == setname)
+      {
+         setname = defaultPropertySet;
+      }
+
+      // Try to get default value
+      value = getDefaultProperty(e.getUMLClassName(), tool, setname, name);
+      if (value == null)
+      {
+        throw new IllegalArgumentException("Property '" + tool + "." + e.getUMLClassName() + "." + setname + "." + name + "' not exist");
+      }
+    }
+
+    return value;
+  }
+
+
+  protected void processProperties()
+  {
+    Iterator i = petalModel.getProperties().getAttributes().iterator();
+    while (i.hasNext())
+    {
+      PAttribute p = (PAttribute)i.next();
+      if (!acceptPropertyTool(p.getTool()))
+      {
+        continue;
+      }
+      String nm = p.getName();
+      if ("HiddenTool".equals(nm))
+      {
+        // ignore
+      }
+      else if ("propertyId".equals(nm))
+      {
+        // ignore
+      }
+      else
+      {
+        int idx = nm.lastIndexOf("__");
+        if (idx != -1 && p.getValue() instanceof PAttributeListValue)
+        {
+          PAttributeListValue psv = (PAttributeListValue)p.getValue();
+          String sfx = nm.substring(idx);
+
+          // scan properties
+          Iterator j = psv.getValue().iterator();
+          while (j.hasNext())
+          {
+            PAttribute prop = (PAttribute)j.next();
+            if (!(prop.getValue() instanceof PAttributeListValue))
+            {
+              Object classname = class2typeSuffixUML.get(sfx);
+
+              if (null != classname)
+              {
+                if (classname instanceof List)
+                {
+                  Iterator k = ((List)classname).iterator();
+                  while (k.hasNext())
+                  {
+                    setDefaultProperty(
+                      (String)k.next(),
+                      p.getTool(),
+                      nm.substring(0, idx),
+                      prop.getName(),
+                      convertPropertyValue2(prop)
+                    );
+                  }
+                }
+                else if (classname instanceof String)
+                {
+                  setDefaultProperty(
+                    (String)classname,
+                    p.getTool(),
+                    nm.substring(0, idx),
+                    prop.getName(),
+                    convertPropertyValue2(prop)
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  protected boolean acceptPropertyTool(String t)
+  {
+    return true;
+  }
+  // property processing section
+  // currently it is very non-optimal bu it works
+  /** mapping from petal file classes to property type suffixes */
+  private static final HashMap class2typeSuffix = new HashMap();
+  static // initialize class2typeSuffix
+  {
+    class2typeSuffix.put(PClassCategory.class          , "__Category"   );
+    class2typeSuffix.put(PClass.class             , "__Class"      );
+    class2typeSuffix.put(PParameterizedClass.class, "__Class"      );
+    class2typeSuffix.put(PInstantiatedClass.class , "__Class"      );
+    class2typeSuffix.put(PRole.class              , "__Role"       );
+    class2typeSuffix.put(POperation.class         , "__Operation"  );
+    class2typeSuffix.put(PClassAttribute.class         , "__Attribute"  );
+    class2typeSuffix.put(PAssociation.class       , "__Association");
+    class2typeSuffix.put(PSubSystem.class       , "__Subsystem");
+  }
+
+  private static final ArrayList class2typeSuffixUMLClass = new ArrayList();
+  static // initialize class2typeSuffixUMLClass
+  {
+    class2typeSuffixUMLClass.add("Class");
+    class2typeSuffixUMLClass.add("Exception");
+    class2typeSuffixUMLClass.add("Stereotype");
+    class2typeSuffixUMLClass.add("Primitive");
+  }
+
+  private static final HashMap class2typeSuffixUML = new HashMap();
+  static // initialize class2typeSuffixUML
+  {
+    class2typeSuffixUML.put("__Category", "Package");
+    class2typeSuffixUML.put("__Class", class2typeSuffixUMLClass);
+    class2typeSuffixUML.put("__Role", "AssociationEnd");
+    class2typeSuffixUML.put("__Operation", "Operation");
+    class2typeSuffixUML.put("__Attribute", "Attribute");
+    class2typeSuffixUML.put("__Association", "Association");
+    class2typeSuffixUML.put("__Project", "Model");
+  }
+
+
+  /** Default property set name */
+  public static final String defaultPropertySet = "default";
+
+  /** Property tag */
+  public static final String propertyTag = "property.";
+
+  /** convert property value to string */
+  private String convertPropertyValue2(PAttribute p)
+  {
+    PAttributeValue pv = (PAttributeValue)p.getValue();
+    if (pv instanceof PAttributeEnumValue)
+    {
+      PAttributeEnumValue v = (PAttributeEnumValue)pv;
+      return String.valueOf(v.getValue());
+    }
+    else if (pv instanceof PAttributeStringValue)
+    {
+      PAttributeStringValue v = (PAttributeStringValue)pv;
+      return v.getValue();
+    }
+    else if (pv instanceof PAttributeBooleanValue)
+    {
+      PAttributeBooleanValue v = (PAttributeBooleanValue)pv;
+      return v.isValue()?"true":"false";
+    }
+    else if (pv instanceof PAttributeIntValue)
+    {
+      PAttributeIntValue v = (PAttributeIntValue)pv;
+      return Integer.toString(v.getValue());
+    }
+    else
+    {
+      throw new IllegalArgumentException("Unsupported property class: "+pv.getClass().getName());
+    }
+  }
+
+  /** convert properties from PElement to MElement */
+  HashMap elementTaggedValues = null;
+  protected void convertProperties(PElement p, MModelElement m)
+  {
+    elementTaggedValues = new HashMap();
+
+    String sfx = (String)class2typeSuffix.get(p.getClass());
+    if (sfx == null)
+    {
+      return;
+    }
+
+    // get all non default tools
+    List props = p.getAttributes();
+    if (props != null) {
+        Iterator i = props.iterator();
+
+        while (i.hasNext())
+        {
+          PAttribute prop = (PAttribute)i.next();
+          String toolname = prop.getTool();
+          if (!acceptPropertyTool(toolname))
+          {
+            continue;
+          }
+          setElementProperty(m, toolname, prop.getName(), convertPropertyValue2(prop));
+      }
+    }
+  }
+ /** Set model element property */
+  public void setElementProperty(MModelElement e, String tool, String name, String value)
+  {
+    // Check property set
+    String setname = (String)elementTaggedValues.get(propertyTag + tool);
+    if (null == setname)
+    {
+       setname = defaultPropertySet;
+    }
+
+    // Check attempt change property set
+    if (name.equals("cg_style") && !setname.equals(value))
+    {
+      elementTaggedValues.put(propertyTag + tool, value);
+      return;
+    }
+
+    // Check default property value
+    String defaultvalue = getDefaultProperty(e.getUMLClassName(), tool, setname, name);
+    if (null == defaultvalue)
+    {
+      elementTaggedValues.put(propertyTag + tool + "." + name, value);
+    }
+    else
+    {
+      if (defaultvalue.equals(value))
+      {
+        elementTaggedValues.remove(propertyTag + tool + "." + name);
+      }
+      else
+      {
+        elementTaggedValues.put(propertyTag + tool + "." + name, value);
+      }
+    }
+  }
+  /** Set default property */
+  HashMap modelTaggedValues = new HashMap();
+  public void setDefaultProperty(String classname, String tool, String setname, String name, String value)
+  {
+    if (null == setname)
+    {
+      setname = defaultPropertySet;
+    }
+
+    modelTaggedValues.put(propertyTag + classname + "." + tool + "." + setname + "." + name, value);
+  }
+
+  /** Get model element property */
+  public String getDefaultProperty(String classname, String tool, String setname, String name)
+  {
+    if (null == setname)
+    {
+      setname = defaultPropertySet;
+    }
+
+    return (String)modelTaggedValues.get(propertyTag + classname + "." + tool + "." + setname + "." + name);
+  }
+
+}
+
+@
+
+
+1.1
+log
+@initial checkin
+@
+text
+@a170 1
+    /*
+a173 1
+    */
+@
+
